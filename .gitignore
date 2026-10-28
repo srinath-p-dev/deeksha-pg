@@ -1,0 +1,32 @@
+# Secrets — never commit
+.env
+*.env.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Local file storage (tenant documents, uploads)
+storage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Test artifacts
+backend/tests/.storage/
+
+# WhatsApp login session (like a password!)
+whatsapp/session/
+
+# Local backups (encrypted, but still keep out of git)
+backups/

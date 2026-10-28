@@ -1,0 +1,32 @@
+# Development: only the database runs in Docker.
+# FastAPI and Next.js run directly on your machine for fast hot-reload.
+#
+#   docker compose -f docker-compose.dev.yml up -d     # start
+#   docker compose -f docker-compose.dev.yml down      # stop (data is kept)
+#   docker compose -f docker-compose.dev.yml down -v   # stop AND wipe data
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pgapp-db
+    restart: unless-stopped
+    environment:
+      # Values come from the .env file next to this file
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: Asia/Kolkata
+    ports:
+      # 127.0.0.1 = reachable only from this computer, not your Wi-Fi network
+      - "127.0.0.1:5433:5432"  # 5433 on your PC (5432 is used by another PostgreSQL install)
+    volumes:
+      # Named volume: data survives container restarts and re-creation
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

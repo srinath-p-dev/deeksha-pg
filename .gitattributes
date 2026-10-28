@@ -1,0 +1,4 @@
+# Shell scripts and server config must keep Unix line endings
+*.sh text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf

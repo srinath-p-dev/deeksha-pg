@@ -1,0 +1,101 @@
+# Production: everything runs in Docker on the VPS.
+#
+#   docker compose up -d --build      # build & start (or update after git pull)
+#   docker compose logs -f api        # follow logs of one service
+#   docker compose ps                 # status
+#
+# Only Caddy publishes ports (80/443). Everything else is on the private
+# Docker network and can't be reached from the internet.
+
+x-backend: &backend
+  build: ./backend
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    STORAGE_DIR: /data/storage
+    WHATSAPP_URL: http://whatsapp:3001
+    WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+    ENVIRONMENT: production
+    PUBLIC_BASE_URL: https://${DOMAIN}
+  volumes:
+    - storage:/data/storage
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # HTTPS certificates
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - api
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      - api
+
+  api:
+    <<: *backend
+    # Apply database migrations, then start the API
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  worker:
+    <<: *backend
+    command: python -m app.worker.main
+    depends_on:
+      api:
+        condition: service_healthy # waits until migrations have run
+
+  whatsapp:
+    build: ./whatsapp
+    restart: unless-stopped
+    environment:
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+    volumes:
+      - wa_session:/data/session
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: Asia/Kolkata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  storage:
+  wa_session:
+  caddy_data:
+  caddy_config:
